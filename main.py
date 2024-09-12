@@ -5,6 +5,8 @@ import streamlit as st
 from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv
 import time
+from youtube_transcript_api import TranscriptsDisabled, NoTranscriptFound
+import logging
 
 # Load environment variables
 load_dotenv()
@@ -13,28 +15,37 @@ groq_api_key = st.secrets["GROQ_API_KEY"]
 # Initialize Groq client
 client = groq.Groq(api_key=groq_api_key)
 
-def get_transcript(video_url):
-    """Retrieve the transcript for a YouTube video"""
-    try:
-        yt = youtube_transcript_api.YouTubeTranscriptApi
-        parsed_url = urlparse(video_url)
-        
-        if 'youtu.be' in parsed_url.netloc:
-            video_id = parsed_url.path.lstrip('/')
-        elif 'youtube.com' in parsed_url.netloc:
-            if '/shorts/' in parsed_url.path:
-                video_id = parsed_url.path.split('/shorts/')[1]
+def get_transcript(video_url, max_retries=3):
+    """Retrieve the transcript for a YouTube video with retries"""
+    for attempt in range(max_retries):
+        try:
+            yt = youtube_transcript_api.YouTubeTranscriptApi
+            parsed_url = urlparse(video_url)
+            
+            if 'youtu.be' in parsed_url.netloc:
+                video_id = parsed_url.path.lstrip('/')
+            elif 'youtube.com' in parsed_url.netloc:
+                if '/shorts/' in parsed_url.path:
+                    video_id = parsed_url.path.split('/shorts/')[1]
+                else:
+                    video_id = parse_qs(parsed_url.query).get('v', [None])[0]
+            
+            if not video_id:
+                raise ValueError("Could not extract video ID from URL")
+            
+            transcript = yt.get_transcript(video_id)
+            return " ".join([item["text"] for item in transcript])
+        except (TranscriptsDisabled, NoTranscriptFound) as e:
+            st.error(f"No transcript available for this video: {str(e)}")
+            return None
+        except Exception as e:
+            if attempt < max_retries - 1:
+                st.warning(f"Attempt {attempt + 1} failed. Retrying in 5 seconds...")
+                time.sleep(5)
             else:
-                video_id = parse_qs(parsed_url.query).get('v', [None])[0]
-        
-        if not video_id:
-            raise ValueError("Could not extract video ID from URL")
-        
-        transcript = yt.get_transcript(video_id)
-        return " ".join([item["text"] for item in transcript])
-    except Exception as e:
-        st.error(f"Error retrieving transcript: {str(e)}")
-        return None
+                st.error(f"Error retrieving transcript after {max_retries} attempts: {str(e)}")
+                return None
+    return None
 
 def generate_post(transcript):
     """Generate a social media post from the video transcript using Groq's model"""
