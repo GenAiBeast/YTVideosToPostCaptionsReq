@@ -4,6 +4,7 @@ import youtube_transcript_api
 import streamlit as st
 from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv
+import time
 
 # Load environment variables
 load_dotenv()
@@ -32,7 +33,7 @@ def get_transcript(video_url):
         transcript = yt.get_transcript(video_id)
         return " ".join([item["text"] for item in transcript])
     except Exception as e:
-        print(f"Error retrieving transcript: {e}")
+        st.error(f"Error retrieving transcript: {str(e)}")
         return None
 
 def generate_post(transcript):
@@ -92,8 +93,10 @@ def main():
     if st.button("Generate Summary"):
         if video_url:
             with st.spinner("Retrieving transcript and generating summary..."):
+                time.sleep(2)  # Add a 2-second delay
                 transcript = get_transcript(video_url)
                 if transcript:
+                    time.sleep(2)  # Add another 2-second delay
                     post_text = generate_post(transcript)
                     if post_text:
                         st.success("Summary generated successfully!")
